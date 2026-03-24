@@ -1,18 +1,25 @@
 import mongoose,{Schema} from 'mongoose'
-
+import mongooseAggregatePaginate from "mongoose-aggregate-paginate-v2";
 const tweetSchema = new Schema({
           owner:{
                     type:Schema.Types.ObjectId,
-                    ref:"User"
+                    ref:"User",
+                    required: true  
+          },
+          title:{
+                    type:String,
+                    required:true
           },
           content:{
                     type:String,
                     required:true
           },
-          thumbnail:{
+          media:{
                     type:String,//cloudinary url
           }
 
 },{timestamps:true})
 
-export const Tweet=monngoose.model("Tweet",tweetSchema)
+tweetSchema.plugin(mongooseAggregatePaginate)
+
+export const Tweet=mongoose.model("Tweet",tweetSchema)

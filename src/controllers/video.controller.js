@@ -29,14 +29,21 @@ const getAllVideos=asyncHandler(async (req,res) => {
           match.isPublished=true
 
           const sortOptions = {}
+
           if(sortBy){
             sortOptions[sortBy] = sortType === "asc" ? 1 : -1
+          }else{
+            sortOptions.createdAt = -1
           }
 
 
           const pipeline=[
-                    {$match:match},
-                    {$sort:sortOptions}
+                    {
+                        $match:match
+                    },
+                    {
+                        $sort:sortOptions
+                    }
           ]
 
           const options={
@@ -83,8 +90,8 @@ const publishAVideo = asyncHandler(async (req, res) => {
         duration:video.duration || 0,
         owner:req.user._id
     })
-    return res.status(201).json(
-        new ApiResponse(201, newVideo, "Video published successfully")
+    return res.status(200).json(
+        new ApiResponse(200, newVideo, "Video published successfully")
     )
 
 })

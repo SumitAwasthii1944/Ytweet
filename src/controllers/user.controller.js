@@ -140,9 +140,9 @@ const logoutUser = asyncHandler(async (req,res) => {
           await User.findByIdAndUpdate(
                     req.user._id,
                     {
-                              $unset:{
-                                        refreshToken:1//this removes the field from document
-                              }
+                        $unset:{
+                                refreshToken:1//this removes the field from document
+                        }
                     },
                     { new:true }
 
@@ -227,10 +227,12 @@ const changeCurrentPassword =asyncHandler(async (req,res) => {
           );
 })
 
-const getCurrentUser= asyncHandler( async (req,res) => {
-          return res
-          .status(200)
-          .json(new ApiResponse(200,{},"password changed successfully"))
+const getCurrentUser = asyncHandler(async (req, res) => {
+    return res
+        .status(200)
+        .json(
+            new ApiResponse(200, req.user, "Current user fetched successfully")
+        )
 })
 
 const updateAccountDetails = asyncHandler( async (req,res) => {
