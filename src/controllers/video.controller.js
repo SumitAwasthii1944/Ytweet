@@ -1,147 +1,251 @@
-import mongoose,{isValidObjectId} from 'mongoose'
-import {Video} from '../models/video.model.js'
-import {User} from '../models/user.model.js'
+import mongoose, { isValidObjectId } from 'mongoose'
+import { Video } from '../models/video.model.js'
+import { User } from '../models/user.model.js'
 import { ApiError } from '../utils/ApiError.js'
 import { ApiResponse } from '../utils/ApiResponse.js'
 import { asyncHandler } from '../utils/asyncHandler.js'
 import { uploadOnCloudinary } from '../utils/cloudinary.js'
 
-const getAllVideos=asyncHandler(async (req,res) => {
-          //sbse phle hmne saara data liya url se
-          // When writing this controller, the thinking is:
-          // User may search videos
-          // User may filter by channel
-          // User may sort videos
-          // Results must be paginated
-          //aggregate() lets you combine all these in one pipeline.
-
-          const {page = 1,limit=10,query,sortBy,sortType,userId} =req.query
-          const match={}
-
-          if(query){
-                    match.title = {$regex:query, $options:"i"}//i means case-insensitive
-          }
-
-          if(userId){
-                    match.owner=new mongoose.Types.ObjectId(userId)
-          }
-
-          match.isPublished=true
-
-          const sortOptions = {}
-
-          if(sortBy){
-            sortOptions[sortBy] = sortType === "asc" ? 1 : -1
-          }else{
-            sortOptions.createdAt = -1
-          }
-
-
-          const pipeline=[
-                    {
-                        $match:match
-                    },
-                    {
-                        $sort:sortOptions
+// ─── Helper ───────────────────────────────────────────────────────────────────
+// Reusable pipeline to fetch a single video WITH likesCount + isLiked + owner
+// Used by publishAVideo and updateVideo so they return the same shape
+// as getAllVideos and getVideoById — frontend always gets consistent data
+const getVideoWithLikes = async (videoId, userId) => {
+    const result = await Video.aggregate([
+        {
+            $match: { _id: new mongoose.Types.ObjectId(videoId) }
+        },
+        {
+            $lookup: {
+                from: "likes",
+                localField: "_id",
+                foreignField: "video",
+                as: "likes"
+            }
+        },
+        {
+            $addFields: {
+                likesCount: { $size: "$likes" },
+                isLiked: {
+                    $cond: {
+                        if: { $in: [new mongoose.Types.ObjectId(userId), "$likes.likedBy"] },
+                        then: true,
+                        else: false
                     }
-          ]
+                }
+            }
+        },
+        {
+            $project: { likes: 0 }  // remove raw likes array
+        }
+    ])
 
-          const options={
-                    page:parseInt(page),
-                    limit:parseInt(limit)
-          }
+    return result[0]
+}
 
-          const videos= await Video.aggregatePaginate(Video.aggregate(pipeline),options)
+// ─── Controllers ──────────────────────────────────────────────────────────────
 
-          return res.status(200).json(
-                    new ApiResponse(200,videos,"videos fetched succesfully")
-          )
+const getAllVideos = asyncHandler(async (req, res) => {
+    const { page = 1, limit = 10, query, sortBy, sortType, userId } = req.query
+    const match = {}
+
+    if (query) {
+        match.title = { $regex: query, $options: "i" }
+    }
+
+    //fix 1: validate userId before converting to ObjectId
+    if (userId && mongoose.Types.ObjectId.isValid(userId)) {
+        match.owner = new mongoose.Types.ObjectId(userId)
+    }
+
+    match.isPublished = true
+
+    const sortOptions = {}
+
+    if (sortBy) {
+        sortOptions[sortBy] = sortType === "asc" ? 1 : -1
+    } else {
+        sortOptions.createdAt = -1
+    }
+
+    const pipeline = [
+        {
+            $match: match
+        },
+        {
+            $lookup: {
+                from: "likes",
+                localField: "_id",
+                foreignField: "video",
+                as: "likes"
+            }
+        },
+        {
+            $addFields: {
+                likesCount: { $size: "$likes" },
+                isLiked: {
+                    $cond: {
+                        // ✅ fix 2: explicitly convert to ObjectId for correct $in comparison
+                        if: { $in: [new mongoose.Types.ObjectId(req.user?._id), "$likes.likedBy"] },
+                        then: true,
+                        else: false
+                    }
+                }
+            }
+        },
+        {
+            // ✅ fix 3: was { project: { likes: 0 } } — missing $ sign
+            $project: { likes: 0 }
+        },
+        {
+            $sort: sortOptions
+        }
+    ]
+
+    const options = {
+        page: parseInt(page),
+        limit: parseInt(limit)
+    }
+
+    const videos = await Video.aggregatePaginate(Video.aggregate(pipeline), options)
+
+    return res.status(200).json(
+        new ApiResponse(200, videos, "Videos fetched successfully")
+    )
 })
 
 const publishAVideo = asyncHandler(async (req, res) => {
-    const { title, description} = req.body
-    // TODO: get video, upload to cloudinary, create video
-    if(!title || !description){
-          throw new ApiError(400,"title and description are required")
+    const { title, description } = req.body
+
+    if (!title || !description) {
+        throw new ApiError(400, "Title and description are required")
     }
-    const videoLocalPath=req.files?.videoFile?.[0]?.path
-    const thumbnailLocalPath=req.files?.thumbnail?.[0]?.path
-    if(!videoLocalPath){
-        throw new ApiError(400,"video file is required")
+
+    const videoLocalPath = req.files?.videoFile?.[0]?.path
+    const thumbnailLocalPath = req.files?.thumbnail?.[0]?.path
+
+    if (!videoLocalPath) {
+        throw new ApiError(400, "Video file is required")
     }
-    if(!thumbnailLocalPath){
-        throw new ApiError(400,"thumbnail file is required")
+    if (!thumbnailLocalPath) {
+        throw new ApiError(400, "Thumbnail file is required")
     }
+
     const video = await uploadOnCloudinary(videoLocalPath)
     const thumbnail = await uploadOnCloudinary(thumbnailLocalPath)
+
     if (!video?.url) {
         throw new ApiError(400, "Error uploading video")
     }
-
     if (!thumbnail?.url) {
         throw new ApiError(400, "Error uploading thumbnail")
     }
 
     const newVideo = await Video.create({
-        videoFile:video.url,
-        thumbnail:thumbnail.url,
+        videoFile: video.url,
+        thumbnail: thumbnail.url,
         title,
         description,
-        duration:video.duration || 0,
-        owner:req.user._id
+        duration: video.duration || 0,
+        owner: req.user._id
     })
-    return res.status(200).json(
-        new ApiResponse(200, newVideo, "Video published successfully")
-    )
 
+    // ✅ fix 4: fetch with likesCount + isLiked so frontend gets consistent shape
+    // likesCount = 0, isLiked = false for a brand new video
+    const videoWithLikes = await getVideoWithLikes(newVideo._id, req.user._id)
+
+    return res.status(200).json(
+        new ApiResponse(200, videoWithLikes, "Video published successfully")
+    )
 })
 
 const getVideoById = asyncHandler(async (req, res) => {
     const { videoId } = req.params
-    //TODO: get video by id
-    if(!mongoose.Types.ObjectId.isValid(videoId)){
-        throw new ApiError(400,"Invalid video Id")
-    }
-    const video = await Video.findByIdAndUpdate(
-        videoId,
-        {
-            $inc: { views: 1 }
-        },
-        { new: true }
-    )
-    if(!video){
-        throw new ApiError(404,"video not found")
+
+    if (!mongoose.Types.ObjectId.isValid(videoId)) {
+        throw new ApiError(400, "Invalid video Id")
     }
 
+    const video = await Video.aggregate([
+        {
+            $match: {
+                _id: new mongoose.Types.ObjectId(videoId)
+            }
+        },
+        {
+            $lookup: {
+                from: "likes",
+                localField: "_id",
+                foreignField: "video",
+                as: "likes"
+            }
+        },
+        {
+            $lookup: {
+                from: "users",
+                localField: "owner",
+                foreignField: "_id",
+                as: "owner"
+            }
+        },
+        {
+            $addFields: {
+                likesCount: { $size: "$likes" },
+                isLiked: {
+                    $cond: {
+                        if: { $in: [new mongoose.Types.ObjectId(req.user?._id), "$likes.likedBy"] },
+                        then: true,
+                        else: false
+                    }
+                },
+                owner: { $first: "$owner" }
+            }
+        },
+        {
+            $project: {
+                likes: 0,
+                "owner.password": 0,
+                "owner.email": 0,
+                "owner.watchHistory": 0
+            }
+        }
+    ])
+
+    if (!video?.length) {
+        throw new ApiError(404, "Video not found")
+    }
+
+    // increment views separately
+    await Video.findByIdAndUpdate(videoId, { $inc: { views: 1 } })
+
+    // add to watch history
     await User.findByIdAndUpdate(
         req.user._id,
-        {
-            $addToSet: { watchHistory: videoId }//addtoset avoids duplicates in the array, same user is counted only once whereas $push insert duplicates
-        }
+        { $addToSet: { watchHistory: videoId } }
     )
 
-    res.status(200).json(
-        new ApiResponse(200,video,"video fetched successfully")
+    return res.status(200).json(
+        new ApiResponse(200, video[0], "Video fetched successfully")
     )
 })
 
 const updateVideo = asyncHandler(async (req, res) => {
     const { videoId } = req.params
-    const { title , description} =req.body
+    const { title, description } = req.body
     const thumbnailLocalPath = req.file?.path
-    //TODO: update video details like title, description, thumbnail
-    if(!mongoose.Types.ObjectId.isValid(videoId)){
-        throw new ApiError(400,"Invalid video Id")
+
+    if (!mongoose.Types.ObjectId.isValid(videoId)) {
+        throw new ApiError(400, "Invalid video Id")
     }
 
-    let updateFields={
+    let updateFields = {
         title,
         description
     }
 
-    if(thumbnailLocalPath){
-        const thumbnail= await uploadOnCloudinary(thumbnailLocalPath)
-        updateFields.thumbnail=thumbnail.url
+    if (thumbnailLocalPath) {
+        const thumbnail = await uploadOnCloudinary(thumbnailLocalPath)
+        updateFields.thumbnail = thumbnail.url
     }
 
     const updatedVideo = await Video.findOneAndUpdate(
@@ -150,62 +254,68 @@ const updateVideo = asyncHandler(async (req, res) => {
             owner: req.user._id
         },
         {
-            $set:updateFields
+            $set: updateFields
         },
-        {new:true}   
+        { new: true }
     )
-    if(!updatedVideo){
-        throw new ApiError(404,"Video not found or unauthorized")
+
+    if (!updatedVideo) {
+        throw new ApiError(404, "Video not found or unauthorized")
     }
+
+    // ✅ fix 5: fetch with likesCount + isLiked so frontend gets consistent shape
+    // preserves existing likesCount + isLiked after edit
+    const videoWithLikes = await getVideoWithLikes(videoId, req.user._id)
+
     return res.status(200).json(
-        new ApiResponse(200, updatedVideo, "Video updated successfully")
+        new ApiResponse(200, videoWithLikes, "Video updated successfully")
     )
 })
 
 const deleteVideo = asyncHandler(async (req, res) => {
     const { videoId } = req.params
-    //TODO: delete video
-    if(!videoId){
-        throw new ApiError(400,"videoId not found")
+
+    if (!videoId) {
+        throw new ApiError(400, "videoId not found")
     }
-    if(!mongoose.Types.ObjectId.isValid(videoId)){
-        throw new ApiError(400,"Invalid video Id")
+    if (!mongoose.Types.ObjectId.isValid(videoId)) {
+        throw new ApiError(400, "Invalid video Id")
     }
-    const deletedVideo=await Video.findOneAndDelete({
-        _id:videoId,
-        owner:req.user._id
+
+    const deletedVideo = await Video.findOneAndDelete({
+        _id: videoId,
+        owner: req.user._id
     })
-    if(!deletedVideo){
-        throw new ApiError(404,"Video not found or unauthorized")
+
+    if (!deletedVideo) {
+        throw new ApiError(404, "Video not found or unauthorized")
     }
 
     return res.status(200).json(
         new ApiResponse(200, {}, "Video deleted successfully")
     )
-
 })
 
 const togglePublishStatus = asyncHandler(async (req, res) => {
-    // Get videoId from params
-    // Validate the ID
-    // Ensure the logged-in user owns the video
-    // Flip (toggle) the value of isPublished
-    // Return the updated video
     const { videoId } = req.params
-      if(!videoId){
-        throw new ApiError(400,"videoId not found")
+
+    if (!videoId) {
+        throw new ApiError(400, "videoId not found")
     }
-    if(!mongoose.Types.ObjectId.isValid(videoId)){
-        throw new ApiError(400,"Invalid video Id")
+    if (!mongoose.Types.ObjectId.isValid(videoId)) {
+        throw new ApiError(400, "Invalid video Id")
     }
-    const video=await Video.findOne({
-        _id:videoId,
-        owner:req.user._id
+
+    const video = await Video.findOne({
+        _id: videoId,
+        owner: req.user._id
     })
-    if(!video){
-        throw new ApiError(404,"video not found")
+
+    if (!video) {
+        throw new ApiError(404, "Video not found")
     }
-    video.isPublished=!video.isPublished
+
+    video.isPublished = !video.isPublished
     await video.save()
 
     return res.status(200).json(

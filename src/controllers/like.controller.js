@@ -13,11 +13,10 @@ const toggleVideoLike = asyncHandler(async (req, res) => {
     if(!mongoose.Types.ObjectId.isValid(videoId)){
           throw new ApiError(400,"not a valid videoId")
     }
-    // This hits the VIDEOS collection
       // A commentId will NOT be found there → throws 404
       const video = await Video.findById(videoId)
       if (!video) {
-      throw new ApiError(404, "Video not found")  // ✅ stops execution here
+        throw new ApiError(404, "Video not found")  // ✅ stops execution here
       }
     const liked=await Like.findOneAndDelete({
           video:videoId,
@@ -138,7 +137,6 @@ const getLikedVideos = asyncHandler(async (req, res) => {
     return res.status(200).json(
       new ApiResponse(200, likedVideos, "Liked videos fetched successfully")
     )
-
 })
 
 export {
