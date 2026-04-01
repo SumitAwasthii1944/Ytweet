@@ -16,7 +16,7 @@ const toggleVideoLike = asyncHandler(async (req, res) => {
       // A commentId will NOT be found there → throws 404
       const video = await Video.findById(videoId)
       if (!video) {
-        throw new ApiError(404, "Video not found")  // ✅ stops execution here
+        throw new ApiError(404, "Video not found")  //stops execution here
       }
     const liked=await Like.findOneAndDelete({
           video:videoId,

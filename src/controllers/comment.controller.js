@@ -4,7 +4,6 @@ import { ApiError } from "../utils/ApiError.js"
 import { ApiResponse } from "../utils/ApiResponse.js"
 import { asyncHandler } from "../utils/asyncHandler.js"
 
-// ─── Helper ───────────────────────────────────────────────────────────────────
 // Reusable pipeline to fetch a single comment WITH likesCount + isLiked
 // Used by addComment and updateComment so they return the same shape
 // as getVideoComments — frontend always gets consistent data
@@ -41,7 +40,6 @@ const getCommentWithLikes = async (commentId, userId) => {
     return result[0]
 }
 
-// ─── Controllers ──────────────────────────────────────────────────────────────
 
 const getVideoComments = asyncHandler(async (req, res) => {
     const { videoId } = req.params
@@ -64,7 +62,7 @@ const getVideoComments = asyncHandler(async (req, res) => {
         {
             $addFields: {
                 likesCount: { $size: "$likes" },
-                // ✅ fix 1: added isLiked — was missing, needed by commentSlice cross-slice sync
+                //added isLiked — was missing, needed by commentSlice cross-slice sync
                 isLiked: {
                     $cond: {
                         if: { $in: [new mongoose.Types.ObjectId(req.user?._id), "$likes.likedBy"] },
@@ -75,7 +73,7 @@ const getVideoComments = asyncHandler(async (req, res) => {
             }
         },
         {
-            // ✅ fix 2: remove raw likes array — wasn't projected out before
+            //remove raw likes array — wasn't projected out before
             $project: { likes: 0 }
         }
     ]
@@ -90,7 +88,7 @@ const getVideoComments = asyncHandler(async (req, res) => {
         options
     )
 
-    // ✅ fix 3: empty comments is not an error — just return empty array
+    // empty comments is not an error — just return empty array
     // throwing 400 when a video has no comments breaks the UI
     return res.status(200).json(
         new ApiResponse(200, comments, "Video comments fetched successfully")
@@ -118,7 +116,7 @@ const addComment = asyncHandler(async (req, res) => {
         throw new ApiError(400, "Cannot comment or unauthorized")
     }
 
-    // ✅ fix 4: fetch with likesCount + isLiked so frontend gets consistent shape
+    //fetch with likesCount + isLiked so frontend gets consistent shape
     // likesCount = 0, isLiked = false for a brand new comment
     const commentWithLikes = await getCommentWithLikes(comment._id, req.user._id)
 
@@ -153,7 +151,7 @@ const updateComment = asyncHandler(async (req, res) => {
         throw new ApiError(400, "Cannot update comment or unauthorized")
     }
 
-    // ✅ fix 5: fetch with likesCount + isLiked so frontend gets consistent shape
+    // with likesCount + isLiked so frontend gets consistent shape
     // preserves existing likesCount + isLiked after edit
     const commentWithLikes = await getCommentWithLikes(commentId, req.user._id)
 

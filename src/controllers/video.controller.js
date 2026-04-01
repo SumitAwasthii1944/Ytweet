@@ -6,7 +6,6 @@ import { ApiResponse } from '../utils/ApiResponse.js'
 import { asyncHandler } from '../utils/asyncHandler.js'
 import { uploadOnCloudinary } from '../utils/cloudinary.js'
 
-// ─── Helper ───────────────────────────────────────────────────────────────────
 // Reusable pipeline to fetch a single video WITH likesCount + isLiked + owner
 // Used by publishAVideo and updateVideo so they return the same shape
 // as getAllVideos and getVideoById — frontend always gets consistent data
@@ -43,7 +42,6 @@ const getVideoWithLikes = async (videoId, userId) => {
     return result[0]
 }
 
-// ─── Controllers ──────────────────────────────────────────────────────────────
 
 const getAllVideos = asyncHandler(async (req, res) => {
     const { page = 1, limit = 10, query, sortBy, sortType, userId } = req.query
@@ -53,7 +51,7 @@ const getAllVideos = asyncHandler(async (req, res) => {
         match.title = { $regex: query, $options: "i" }
     }
 
-    //fix 1: validate userId before converting to ObjectId
+    //validate userId before converting to ObjectId
     if (userId && mongoose.Types.ObjectId.isValid(userId)) {
         match.owner = new mongoose.Types.ObjectId(userId)
     }
@@ -85,7 +83,7 @@ const getAllVideos = asyncHandler(async (req, res) => {
                 likesCount: { $size: "$likes" },
                 isLiked: {
                     $cond: {
-                        // ✅ fix 2: explicitly convert to ObjectId for correct $in comparison
+                        //explicitly convert to ObjectId for correct $in comparison
                         if: { $in: [new mongoose.Types.ObjectId(req.user?._id), "$likes.likedBy"] },
                         then: true,
                         else: false
@@ -94,7 +92,7 @@ const getAllVideos = asyncHandler(async (req, res) => {
             }
         },
         {
-            // ✅ fix 3: was { project: { likes: 0 } } — missing $ sign
+            //was { project: { likes: 0 } } — missing $ sign
             $project: { likes: 0 }
         },
         {
@@ -150,7 +148,7 @@ const publishAVideo = asyncHandler(async (req, res) => {
         owner: req.user._id
     })
 
-    // ✅ fix 4: fetch with likesCount + isLiked so frontend gets consistent shape
+    // fetch with likesCount + isLiked so frontend gets consistent shape
     // likesCount = 0, isLiked = false for a brand new video
     const videoWithLikes = await getVideoWithLikes(newVideo._id, req.user._id)
 
@@ -263,7 +261,7 @@ const updateVideo = asyncHandler(async (req, res) => {
         throw new ApiError(404, "Video not found or unauthorized")
     }
 
-    // ✅ fix 5: fetch with likesCount + isLiked so frontend gets consistent shape
+    //fetch with likesCount + isLiked so frontend gets consistent shape
     // preserves existing likesCount + isLiked after edit
     const videoWithLikes = await getVideoWithLikes(videoId, req.user._id)
 

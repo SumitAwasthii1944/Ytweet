@@ -5,7 +5,6 @@ import { ApiError } from "../utils/ApiError.js"
 import { ApiResponse } from "../utils/ApiResponse.js"
 import { asyncHandler } from "../utils/asyncHandler.js"
 
-// ─── Helper ───────────────────────────────────────────────────────────────────
 // Reusable pipeline to fetch a single playlist WITH fully populated videos
 // Used by addVideoToPlaylist and removeVideoFromPlaylist so they return
 // the same shape as getPlaylistById — frontend always gets consistent data
@@ -56,7 +55,6 @@ const getPlaylistWithVideos = async (playlistId) => {
     return result[0]
 }
 
-// ─── CREATE PLAYLIST ──────────────────────────────────────────────────────────
 const createPlaylist = asyncHandler(async (req, res) => {
     const { name, description } = req.body
 
@@ -80,7 +78,6 @@ const createPlaylist = asyncHandler(async (req, res) => {
     )
 })
 
-// ─── GET USER PLAYLISTS ───────────────────────────────────────────────────────
 const getUserPlaylists = asyncHandler(async (req, res) => {
     const { userId } = req.params
 
@@ -125,7 +122,6 @@ const getUserPlaylists = asyncHandler(async (req, res) => {
     )
 })
 
-// ─── GET PLAYLIST BY ID ───────────────────────────────────────────────────────
 const getPlaylistById = asyncHandler(async (req, res) => {
     const { playlistId } = req.params
 
@@ -144,7 +140,6 @@ const getPlaylistById = asyncHandler(async (req, res) => {
     )
 })
 
-// ─── ADD VIDEO TO PLAYLIST ────────────────────────────────────────────────────
 const addVideoToPlaylist = asyncHandler(async (req, res) => {
     const { playlistId, videoId } = req.params
 
@@ -178,7 +173,7 @@ const addVideoToPlaylist = asyncHandler(async (req, res) => {
         { new: true }
     )
 
-    // ✅ fetch with aggregation so videos are fully populated objects
+    // fetch with aggregation so videos are fully populated objects
     // not just ObjectId strings — frontend gets consistent shape
     const updatedPlaylist = await getPlaylistWithVideos(playlistId)
 
@@ -187,7 +182,6 @@ const addVideoToPlaylist = asyncHandler(async (req, res) => {
     )
 })
 
-// ─── REMOVE VIDEO FROM PLAYLIST ───────────────────────────────────────────────
 const removeVideoFromPlaylist = asyncHandler(async (req, res) => {
     const { playlistId, videoId } = req.params
 
@@ -212,7 +206,7 @@ const removeVideoFromPlaylist = asyncHandler(async (req, res) => {
         { new: true }
     )
 
-    // ✅ fetch with aggregation so videos are fully populated objects
+    // fetch with aggregation so videos are fully populated objects
     // not just ObjectId strings — frontend gets consistent shape
     const updatedPlaylist = await getPlaylistWithVideos(playlistId)
 
@@ -221,7 +215,6 @@ const removeVideoFromPlaylist = asyncHandler(async (req, res) => {
     )
 })
 
-// ─── DELETE PLAYLIST ──────────────────────────────────────────────────────────
 const deletePlaylist = asyncHandler(async (req, res) => {
     const { playlistId } = req.params
 
@@ -243,7 +236,6 @@ const deletePlaylist = asyncHandler(async (req, res) => {
     )
 })
 
-// ─── UPDATE PLAYLIST ──────────────────────────────────────────────────────────
 const updatePlaylist = asyncHandler(async (req, res) => {
     const { playlistId } = req.params
     const { name, description } = req.body
@@ -268,8 +260,6 @@ const updatePlaylist = asyncHandler(async (req, res) => {
     )
 
     if (!updatedPlaylist) {
-        // ✅ fix: was ApiError(404, updatePlaylist, "...") — updatePlaylist is the
-        // function not the data, and error throws nothing anyway
         throw new ApiError(404, "Playlist not found or unauthorized")
     }
 
