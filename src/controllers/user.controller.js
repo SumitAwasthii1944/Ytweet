@@ -134,6 +134,22 @@ const loginUser =asyncHandler(async (req,res) => {
                     },"user Logged in successfully")
           )
 })
+const searchUsers = asyncHandler(async (req, res) => {
+    const { query } = req.query
+
+    if (!query) throw new ApiError(400, "Query is required")
+
+    const users = await User.find({
+        $or: [
+            { username: { $regex: query, $options: "i" } },
+            { fullName: { $regex: query, $options: "i" } }
+        ]
+    }).select("-password -refreshToken -watchHistory")
+
+    return res.status(200).json(
+        new ApiResponse(200, users, "Users fetched successfully")
+    )
+})
 
 const logoutUser = asyncHandler(async (req,res) => {
           //refersh token ko database se gyb kr do
@@ -446,5 +462,6 @@ export {
           updateAccountDetails,
           updateUserAvatar,
           updateUserCoverImage,
-          getWatchHistory
+          getWatchHistory,
+          searchUsers
 }

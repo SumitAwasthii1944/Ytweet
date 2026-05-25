@@ -8,7 +8,7 @@ import {asyncHandler} from "../utils/asyncHandler.js"
 
 const toggleSubscription = asyncHandler(async (req, res) => {
     const {channelId} = req.params
-    // TODO: toggle subscription
+    // toggle subscription
     if(!mongoose.Types.ObjectId.isValid(channelId)){
           throw new ApiError(400,"invalid channelId")
     }
@@ -23,24 +23,20 @@ const toggleSubscription = asyncHandler(async (req, res) => {
           }
     )
 
-    if (unsubscribed) {
-        return res.status(200).json(
-            new ApiResponse(200, {}, "Unsubscribed successfully")
-        )
-    }
+        // In toggleSubscription controller:
+        if (unsubscribed) {
+            return res.status(200).json(
+                new ApiResponse(200, { subscribed: false }, "Unsubscribed successfully")
+            )
+        }
 
-    const subscribed= await Subscription.create(
-          {
-                    channel:channelId,
-                    subscriber:req.user._id
-          }
-    )
+        const subscribed = await Subscription.create({ channel: channelId, subscriber: req.user._id })
 
-    if(subscribed){
-        return res.status(200).json(
-            new ApiResponse(200, {}, "Subscribed successfully")
-        )
-    }
+        if (subscribed) {
+            return res.status(200).json(
+                new ApiResponse(200, { subscribed: true }, "Subscribed successfully")
+            )
+        }
 
 })
 
@@ -73,6 +69,7 @@ const getUserChannelSubscribers = asyncHandler(async (req, res) => {
           {
             $project:{
                 fullName:1,
+                username:1,
                 avatar:1,
                 email:1
             }
@@ -113,6 +110,7 @@ const getSubscribedChannels = asyncHandler(async (req, res) => {
           {
             $project:{
                 fullName:1,
+                username:1,
                 avatar:1,
                 email:1
             }

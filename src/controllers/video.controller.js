@@ -5,6 +5,10 @@ import { ApiError } from '../utils/ApiError.js'
 import { ApiResponse } from '../utils/ApiResponse.js'
 import { asyncHandler } from '../utils/asyncHandler.js'
 import { uploadOnCloudinary } from '../utils/cloudinary.js'
+import { convertToHLS,getVideoDuration  } from "../utils/hls.js"           
+import { uploadHLSToCloudinary } from "../utils/cloudinary.js" 
+import { v4 as uuidv4 } from "uuid"   
+import fs from 'fs';               
 
 // Reusable pipeline to fetch a single video WITH likesCount + isLiked + owner
 // Used by publishAVideo and updateVideo so they return the same shape
@@ -22,6 +26,7 @@ const getVideoWithLikes = async (videoId, userId) => {
                 as: "likes"
             }
         },
+        
         {
             $addFields: {
                 likesCount: { $size: "$likes" },
@@ -31,7 +36,8 @@ const getVideoWithLikes = async (videoId, userId) => {
                         then: true,
                         else: false
                     }
-                }
+                },
+                
             }
         },
         {
@@ -79,6 +85,14 @@ const getAllVideos = asyncHandler(async (req, res) => {
             }
         },
         {
+            $lookup: {
+                from: "users",
+                localField: "owner",
+                foreignField: "_id",
+                as: "owner"
+            }
+        },
+        {
             $addFields: {
                 likesCount: { $size: "$likes" },
                 isLiked: {
@@ -88,11 +102,11 @@ const getAllVideos = asyncHandler(async (req, res) => {
                         then: true,
                         else: false
                     }
-                }
+                },
+                owner:{$first:"$owner"}
             }
         },
         {
-            //was { project: { likes: 0 } } — missing $ sign
             $project: { likes: 0 }
         },
         {
@@ -113,7 +127,7 @@ const getAllVideos = asyncHandler(async (req, res) => {
 })
 
 const publishAVideo = asyncHandler(async (req, res) => {
-    const { title, description } = req.body
+    const { title, description,isPublished  } = req.body
 
     if (!title || !description) {
         throw new ApiError(400, "Title and description are required")
@@ -129,23 +143,31 @@ const publishAVideo = asyncHandler(async (req, res) => {
         throw new ApiError(400, "Thumbnail file is required")
     }
 
-    const video = await uploadOnCloudinary(videoLocalPath)
     const thumbnail = await uploadOnCloudinary(thumbnailLocalPath)
 
-    if (!video?.url) {
-        throw new ApiError(400, "Error uploading video")
-    }
+    //convert video to hls chunks locally
+    const videoId=uuidv4()//for unique folder name per video
+    const hlsFolderPath = await convertToHLS(videoLocalPath, videoId)
+    //upload hls folder to cloudinary get streaming url
+    const hlsUrl=await uploadHLSToCloudinary(hlsFolderPath,videoId)
+    fs.rmSync(hlsFolderPath, { recursive: true, force: true })
+
+    if (!hlsUrl) throw new ApiError(400, "Error uploading video")
+
     if (!thumbnail?.url) {
         throw new ApiError(400, "Error uploading thumbnail")
     }
 
+    const duration = await getVideoDuration(videoLocalPath)
+
     const newVideo = await Video.create({
-        videoFile: video.url,
+        videoFile: hlsUrl,
         thumbnail: thumbnail.url,
         title,
         description,
-        duration: video.duration || 0,
-        owner: req.user._id
+        duration: duration || 0,
+        owner: req.user._id,
+        isPublished: isPublished === "true" || isPublished === true  //handle both string and boolean (FormData sends strings)
     })
 
     // fetch with likesCount + isLiked so frontend gets consistent shape
@@ -213,13 +235,10 @@ const getVideoById = asyncHandler(async (req, res) => {
         throw new ApiError(404, "Video not found")
     }
 
-    // increment views separately
-    await Video.findByIdAndUpdate(videoId, { $inc: { views: 1 } })
-
     // add to watch history
     await User.findByIdAndUpdate(
         req.user._id,
-        { $addToSet: { watchHistory: videoId } }
+        { $addToSet: { watchHistory: videoId } }//addtoSet prevents duplicates in watch history
     )
 
     return res.status(200).json(
@@ -321,11 +340,26 @@ const togglePublishStatus = asyncHandler(async (req, res) => {
     )
 })
 
+const incrementViews = asyncHandler(async (req, res) => {
+    const { videoId } = req.params
+
+    if (!mongoose.Types.ObjectId.isValid(videoId)) {
+        throw new ApiError(400, "Invalid video Id")
+    }
+
+    await Video.findByIdAndUpdate(videoId, { $inc: { views: 1 } })
+
+    return res.status(200).json(
+        new ApiResponse(200, {}, "Views incremented successfully")
+    )
+})
+
 export {
     getAllVideos,
     publishAVideo,
     getVideoById,
     updateVideo,
     deleteVideo,
-    togglePublishStatus
+    togglePublishStatus,
+    incrementViews
 }

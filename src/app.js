@@ -14,7 +14,14 @@ import dashboardRouter from "./routes/dashboard.routes.js"
 const app = express()
 
 app.use(cors({
-    origin: process.env.CORS_ORIGIN,
+    origin: (origin, callback) => {
+        // allow requests from your frontend only
+        if (!origin || origin === process.env.CORS_ORIGIN) {
+            callback(null, true)
+        } else {
+            callback(new Error("Not allowed by CORS"))
+        }
+    },
     credentials: true
 }))
 
@@ -33,6 +40,6 @@ app.use("/api/v1/likes", likeRouter)
 app.use("/api/v1/playlist", playlistRouter)
 app.use("/api/v1/dashboard", dashboardRouter)
 
-// http://localhost:8000/api/v1/users/register
+ //http://localhost:8000/api/v1/users/register
 
 export { app }

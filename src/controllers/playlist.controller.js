@@ -47,7 +47,7 @@ const getPlaylistWithVideos = async (playlistId) => {
                     avatar: 1
                 },
                 createdAt: 1,
-                updatedAt: 1
+                updatedAt: 1,
             }
         }
     ])
@@ -58,13 +58,13 @@ const getPlaylistWithVideos = async (playlistId) => {
 const createPlaylist = asyncHandler(async (req, res) => {
     const { name, description } = req.body
 
-    if (!name || !description) {
-        throw new ApiError(400, "Name and description are required")
+    if (!name) {
+        throw new ApiError(400, "Name is required")
     }
 
     const playlist = await Playlist.create({
         name,
-        description,
+        description: description || "",
         owner: req.user._id,
         videos: []
     })
@@ -73,8 +73,17 @@ const createPlaylist = asyncHandler(async (req, res) => {
         throw new ApiError(500, "Error creating playlist")
     }
 
+    const playlistWithOwner = {
+        ...playlist.toObject(),
+        owner: {
+            username: req.user.username,
+            fullName: req.user.fullName,
+            avatar: req.user.avatar || "/default.png"
+        }
+    }
+
     return res.status(201).json(
-        new ApiResponse(201, playlist, "Playlist created successfully")
+        new ApiResponse(201, playlistWithOwner, "Playlist created successfully")
     )
 })
 
@@ -100,17 +109,32 @@ const getUserPlaylists = asyncHandler(async (req, res) => {
             }
         },
         {
+            $lookup: {
+                from: "users",
+                localField: "owner",
+                foreignField: "_id",
+                as: "owner"
+            }
+        },
+        {
             $addFields: {
                 totalVideos: { $size: "$videos" },
-                thumbnail: { $first: "$videos.thumbnail" }
+                thumbnail: { $first: "$videos.thumbnail" },
+                owner: { $first: "$owner" }
             }
         },
         {
             $project: {
                 name: 1,
                 description: 1,
+                videos: 1,
                 totalVideos: 1,
                 thumbnail: 1,
+                owner: {
+                    username: 1,
+                    fullName: 1,
+                    avatar: 1
+                },
                 createdAt: 1,
                 updatedAt: 1
             }
@@ -248,7 +272,7 @@ const updatePlaylist = asyncHandler(async (req, res) => {
         throw new ApiError(400, "Provide name or description to update")
     }
 
-    const updatedPlaylist = await Playlist.findOneAndUpdate(
+    await Playlist.findOneAndUpdate(
         {
             _id: playlistId,
             owner: req.user._id
@@ -258,6 +282,8 @@ const updatePlaylist = asyncHandler(async (req, res) => {
         },
         { new: true }
     )
+
+    const updatedPlaylist = await getPlaylistWithVideos(playlistId)
 
     if (!updatedPlaylist) {
         throw new ApiError(404, "Playlist not found or unauthorized")
