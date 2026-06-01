@@ -1,6 +1,6 @@
-//require('dotenv').config({path: './.env'});//dotenv aise bhi kaam krega aaram se but accha nhi lg rha
-import dotenv from 'dotenv';
-dotenv.config();
+// without -r in dev script in package.json , you'd need this at the top of every entry file
+// import dotenv from "dotenv"
+// dotenv.config()
 import {app} from "./app.js"
 import connectDB from "./db/index.js";
 

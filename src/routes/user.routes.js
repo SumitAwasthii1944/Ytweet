@@ -1,5 +1,5 @@
 import {Router} from "express"
-import { loginUser, registerUser,refreshAccessToken, changeCurrentPassword,getUserChannelProfile ,getCurrentUser, updateAccountDetails, updateUserAvatar, updateUserCoverImage, getWatchHistory,searchUsers } from "../controllers/user.controller.js"
+import { loginUser, registerUser,refreshAccessToken, changeCurrentPassword,getUserChannelProfile ,getCurrentUser, updateAccountDetails, updateUserAvatar, updateUserCoverImage, getWatchHistory,searchUsers, googleAuth } from "../controllers/user.controller.js"
 import {upload} from "../middlewares/multer.middleware.js"
 import { logoutUser } from "../controllers/user.controller.js"
 import { verifyJWT } from "../middlewares/auth.middleware.js"
@@ -19,6 +19,10 @@ router.route("/register").post(
           ]),
           registerUser
 )
+// Route to receive Google ID token from client and perform server-side verification.
+// This endpoint creates the user if it doesn't exist and issues the same tokens/cookies
+// used by the regular login flow, so nothing else in the app needs to change.
+router.route("/google").post(googleAuth)
 router.route("/login").post(loginUser) 
 //secured Routes
 router.route("/logout").post(verifyJWT,logoutUser)//verifyJWT middleware use krne ki wjh se hm logoutUser function me req.user ko access kr paenge

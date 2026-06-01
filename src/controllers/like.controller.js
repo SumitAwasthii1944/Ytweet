@@ -57,9 +57,48 @@ const toggleCommentLike = asyncHandler(async (req, res) => {
           })
 
           if (like) {
-                    return res.status(200).json(
-                              new ApiResponse(200, {}, "Comment unliked")
-                    )
+          // return updated comment shape with likesCount + isLiked + owner
+          const updated = await Comment.aggregate([
+            { 
+              $match: { _id: new mongoose.Types.ObjectId(commentId) } 
+            },
+            { $lookup: 
+              { 
+                from: "users", 
+                localField: "owner", 
+                foreignField: "_id", 
+                as: "owner" 
+              }
+             },
+            { $unwind: 
+              { 
+                path: "$owner", 
+                preserveNullAndEmptyArrays: true 
+              } 
+            },
+            { $lookup: 
+              { 
+                from: "likes", 
+                localField: "_id", 
+                foreignField: "comment", 
+                as: "likes" 
+              } 
+            },
+            { $addFields: 
+              { 
+                likesCount: 
+                { $size: "$likes" }, 
+                isLiked: { $cond: { if: { $in: [new mongoose.Types.ObjectId(req.user._id), "$likes.likedBy"] }, 
+                then: true, 
+                else: false } } 
+              } 
+            },
+            { $project: { likes: 0 } }
+          ])
+
+          return res.status(200).json(
+                new ApiResponse(200, updated[0] || {}, "Comment unliked")
+          )
           }
 
           await Like.create({
@@ -67,9 +106,52 @@ const toggleCommentLike = asyncHandler(async (req, res) => {
                     likedBy: req.user._id
           })
 
-          return res.status(200).json(
-                    new ApiResponse(200, {}, "Comment liked")
-          )
+      // return updated comment shape with likesCount + isLiked + owner
+      const updated = await Comment.aggregate([
+        { 
+          $match:{
+             _id: new mongoose.Types.ObjectId(commentId) 
+          } 
+        },
+        { 
+          $lookup: 
+          { 
+            from: "users", 
+            localField: "owner", 
+            foreignField: "_id", 
+            as: "owner" 
+          } 
+        },
+        { 
+          $unwind: 
+          { 
+            path: "$owner", 
+            preserveNullAndEmptyArrays: true 
+          } 
+        },
+        { $lookup: 
+          { 
+            from: "likes", 
+            localField: "_id", 
+            foreignField: "comment", 
+            as: "likes" 
+          } 
+        },
+        { 
+          $addFields: 
+          { likesCount: 
+            { $size: "$likes" }, 
+            isLiked: { $cond: { if: { $in: [new mongoose.Types.ObjectId(req.user._id), "$likes.likedBy"] }, 
+            then: true, 
+            else: false }} 
+          } 
+        },
+        { $project: { likes: 0 } }
+      ])
+
+      return res.status(200).json(
+          new ApiResponse(200, updated[0] || {}, "Comment liked")
+      )
 
 })
 

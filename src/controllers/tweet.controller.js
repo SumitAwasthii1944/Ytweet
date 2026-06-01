@@ -6,7 +6,6 @@ import {ApiResponse} from "../utils/ApiResponse.js"
 import {asyncHandler} from "../utils/asyncHandler.js"
 import { uploadOnCloudinary } from "../utils/cloudinary.js"
 
-// ─── Helper ───────────────────────────────────────────────────────────────────
 // Reusable pipeline to fetch a single tweet WITH totalLikes + isLiked
 // Used by createTweet and updateTweet so they return the same shape
 // as getUserTweets — frontend slice always gets consistent data
@@ -36,7 +35,7 @@ const getTweetWithLikes = async (tweetId, userId) => {
             }
         },
         {
-            // remove the raw likes array — frontend doesn't need it
+            // remove the raw likes array, frontend doesn't need it
             $project: { likes: 0 }
         }
     ])

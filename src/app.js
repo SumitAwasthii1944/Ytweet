@@ -16,13 +16,13 @@ const app = express()
 app.use(cors({
     origin: (origin, callback) => {
         // allow requests from your frontend only
-        if (!origin || origin === process.env.CORS_ORIGIN) {
+        if (!origin || origin === process.env.CORS_ORIGIN) {//allow requests with no origin (like mobile apps or curl requests) and from the specified frontend origin
             callback(null, true)
         } else {
             callback(new Error("Not allowed by CORS"))
         }
     },
-    credentials: true
+    credentials: true//allow cookies to be sent in cross-origin requests
 }))
 
 app.use(express.json({limit: "16kb"}))

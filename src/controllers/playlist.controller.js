@@ -5,7 +5,7 @@ import { ApiError } from "../utils/ApiError.js"
 import { ApiResponse } from "../utils/ApiResponse.js"
 import { asyncHandler } from "../utils/asyncHandler.js"
 
-// Reusable pipeline to fetch a single playlist WITH fully populated videos
+// Reusable pipeline to fetch a single playlist with fully populated videos
 // Used by addVideoToPlaylist and removeVideoFromPlaylist so they return
 // the same shape as getPlaylistById — frontend always gets consistent data
 const getPlaylistWithVideos = async (playlistId) => {

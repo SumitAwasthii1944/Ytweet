@@ -20,6 +20,82 @@ const generateAccessAndRefreshTokens = (async (userId) => {
           }
 })
 
+// Google OAuth handler (uses ID token from client)
+// creates a user if needed, and then re-uses the existing token/cookie mechanism
+// used by regular login (so the rest of the app doesn't need to change).
+const googleAuth = asyncHandler(async (req, res) => {
+    // The frontend sends a Google ID token (JWT) after a successful client-side sign-in.
+    // We verify it with Google's tokeninfo endpoint and extract the user's profile.
+    const { idToken } = req.body;
+    if (!idToken) throw new ApiError(400, "idToken is required");
+
+    // Verify token with Google - this returns a JSON profile for the token.
+    // You can also verify the token using Google libraries, but tokeninfo is simple
+    // and sufficient for this flow where the client already performed the sign-in.
+    const verifyRes = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${idToken}`);
+    const profile = await verifyRes.json();
+
+    // tokeninfo returns 'email_verified' as string 'true'/'false'. If not verified,
+    // deny the request. This ensures the email actually belongs to the user.
+    if (profile.error_description || profile.email_verified !== 'true') {
+        throw new ApiError(401, "Invalid Google token");
+    }
+
+    // Extract useful profile fields
+    const email = profile.email;
+    const fullName = profile.name || email.split("@")[0];
+    const avatarUrl = profile.picture || "";
+
+    // Find an existing user by email. If none exists, create one so the Google user
+    // can access the same app functionality as regular accounts.
+    let user = await User.findOne({ email });
+
+    if (!user) {
+        // Generate a safe username from the email/local-part and ensure uniqueness.
+        let baseUsername = (email.split("@")[0] || fullName.split(" ")[0]).toLowerCase().replace(/[^a-z0-9]/g, "");
+        if (!baseUsername) baseUsername = `user${Date.now()}`;// fallback username if email/local-part doesn't yield a valid username
+        let username = baseUsername;
+        let counter = 0;
+        while (await User.findOne({ username })) {// check if username already exists and if it does, append a counter until we find a unique one
+            counter++;
+            username = `${baseUsername}${counter}`;
+        }
+
+        // We set a random password because the user will primarily sign-in with Google.
+        // The password field is required by the schema; keeping a random value avoids
+        // changing the existing signup flow.
+        const randomPassword = Math.random().toString(36).slice(-12);// -12 means we want a 12 character long random string
+
+        user = await User.create({
+            fullName,
+            avatar: avatarUrl || "",
+            coverImage: "",
+            email,
+            password: randomPassword,
+            username
+        });
+    }
+
+    // Reuse existing token generation so frontend receives the same response shape
+    // as standard login. This helps keep the rest of the app unchanged.
+    const { accessToken, refreshToken } = await generateAccessAndRefreshTokens(user._id);
+
+    const loggedInUser = await User.findById(user._id).select("-password -refreshToken");
+
+    // Cookie options mirror existing login logic. Note: secure:true requires HTTPS.
+    const options = {
+        httpOnly: true,
+        secure: true
+    };
+
+    return res.status(200)
+        .cookie("accessToken", accessToken, options)
+        .cookie("refreshToken", refreshToken, options)
+        .json(
+            new ApiResponse(200, { user: loggedInUser, accessToken, refreshToken }, "User logged in via Google")
+        );
+});
+
 const registerUser=asyncHandler( async (req,res) => {
 
           // get user details from frontend
@@ -301,7 +377,7 @@ const updateUserAvatar = asyncHandler(async (req,res) => {
                     new ApiResponse(200,user,"Avatar updated successfully")
           )
 })
-const updateUserCoverImage = asyncHandler(async () => {
+const updateUserCoverImage = asyncHandler(async (req, res) => {
           const coverImageLocalPath=req.file?.path
 
           if(!coverImageLocalPath){
@@ -391,7 +467,6 @@ const getUserChannelProfile= asyncHandler(async (req,res) => {
     if(!channel?.length){
         throw new ApiError(404,"channel does not exists")
     }
-    console.log(channel)
     return res
     .status(200)
     .json(
@@ -463,5 +538,6 @@ export {
           updateUserAvatar,
           updateUserCoverImage,
           getWatchHistory,
-          searchUsers
+          searchUsers,
+          googleAuth
 }

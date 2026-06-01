@@ -12,6 +12,16 @@ const getCommentWithLikes = async (commentId, userId) => {
         {
             $match: { _id: new mongoose.Types.ObjectId(commentId) }
         },
+        // populate owner details
+        {
+            $lookup: {
+                from: "users",
+                localField: "owner",
+                foreignField: "_id",
+                as: "owner"
+            }
+        },
+        { $unwind: { path: "$owner", preserveNullAndEmptyArrays: true } },
         {
             $lookup: {
                 from: "likes",
@@ -51,6 +61,16 @@ const getVideoComments = asyncHandler(async (req, res) => {
                 video: new mongoose.Types.ObjectId(videoId)
             }
         },
+        // populate owner (user) details so frontend gets owner.fullName/username/avatar
+        {
+            $lookup: {
+                from: "users",
+                localField: "owner",
+                foreignField: "_id",
+                as: "owner"
+            }
+        },
+        { $unwind: { path: "$owner", preserveNullAndEmptyArrays: true } },
         {
             $lookup: {
                 from: "likes",
@@ -74,6 +94,7 @@ const getVideoComments = asyncHandler(async (req, res) => {
         },
         {
             //remove raw likes array — wasn't projected out before
+            // also keep owner fields intact; remove raw likes
             $project: { likes: 0 }
         }
     ]
@@ -175,9 +196,8 @@ const deleteComment = asyncHandler(async (req, res) => {
     if (!deletedComment) {
         throw new ApiError(400, "Cannot delete comment or unauthorized")
     }
-
     return res.status(200).json(
-        new ApiResponse(200, {}, "Comment deleted successfully")
+        new ApiResponse(200, { deletedId: deletedComment._id }, "Comment deleted successfully")
     )
 })
 
