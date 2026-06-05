@@ -157,7 +157,9 @@ const registerUser=asyncHandler( async (req,res) => {
                     username:username.toLowerCase()
           })
           const createdUser=await User.findById(user._id).select(
-                    "-password -refreshToken"//select() is used to specify which fields should be included or excluded in the result. In this case, it is used to exclude the password and refreshToken fields from the user document that is returned in the response. This is done for security reasons, as these fields contain sensitive information that should not be exposed to the client.
+                    "-password -refreshToken"//select() is used to specify which fields should be included or excluded in the result. 
+                    // In this case, it is used to exclude the password and refreshToken fields from the user document that is returned in the response. 
+                    // This is done for security reasons, as these fields contain sensitive information that should not be exposed to the client.
           )
           if(!createdUser){
                     throw new ApiError(500,"something went wrong while registering the user")
@@ -176,7 +178,7 @@ const loginUser =asyncHandler(async (req,res) => {
           //send cookie
           const {email,username,password} =req.body;
           if(!(username || email)){//koi ek ho ya tm jisse login karana chaho
-                    throw new ApiError(400,"username or password is required")
+                    throw new ApiError(400,"username or email is required")
           }
           const user=await User.findOne({
                     $or:[{username},{email}]//ya to same email wala mile ya username 
@@ -294,7 +296,7 @@ const changeCurrentPassword =asyncHandler(async (req,res) => {
           // make sure payload contains both passwords and log for debugging
           const {oldPassword,newPassword} = req.body || {};
           // you could remove the console.log in production
-          console.log("changeCurrentPassword payload", { oldPassword, newPassword });
+         //  console.log("changeCurrentPassword payload", { oldPassword, newPassword });
 
           if (!oldPassword || !newPassword) {
                     throw new ApiError(400, "oldPassword and newPassword are required");

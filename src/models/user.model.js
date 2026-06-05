@@ -52,14 +52,19 @@ const userSchema = new Schema(
     }
 )
 
-userSchema.pre("save", async function () {// .pre() is a Mongoose middleware function that is executed before a document is saved to the database. In this case, it is used to hash the user's password before saving it to the database. 
-// The function checks if the password field has been modified (i.e., if the user has changed their password). If it has not been modified, it simply calls next() to proceed with saving the document. If it has been modified, it hashes the new password using bcrypt and then calls next() to save the document with the hashed password.
+userSchema.pre("save", async function () {// .pre() is a Mongoose middleware function that is executed before a document is saved to the database.
+//  In this case, it is used to hash the user's password before saving it to the database. 
+// The function checks if the password field has been modified (i.e., if the user has changed their password).
+//  If it has not been modified, it simply calls next() to proceed with saving the document. If it has been modified,
+//  it hashes the new password using bcrypt and then calls next() to save the document with the hashed password.
     if(!this.isModified("password")) return;//this.password refers to userSchema's password
 
     this.password = await bcrypt.hash(this.password, 10)
 })
 
-userSchema.methods.isPasswordCorrect = async function(password){//isPasswordCorrect is a custom method defined on the userSchema. It takes a plain text password as an argument and compares it with the hashed password stored in the database using bcrypt's compare function. It returns true if the passwords match and false otherwise. This method can be used during the login process to verify if the provided password is correct for the user.
+userSchema.methods.isPasswordCorrect = async function(password){//isPasswordCorrect is a custom method defined on the userSchema. 
+// It takes a plain text password as an argument and compares it with the hashed password stored in the database using bcrypt's compare function. 
+// It returns true if the passwords match and false otherwise. This method can be used during the login process to verify if the provided password is correct for the user.
     return await bcrypt.compare(password, this.password)
 }
 
