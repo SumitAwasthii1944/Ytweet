@@ -91,62 +91,75 @@ const getUserTweets = asyncHandler(async (req, res) => {
         sortOptions.createdAt = -1
     }
 
-    const pipeline = [
-        {
-            $match: match
-        },
-        {
-            $lookup: {
-                from: "users",
-                localField: "owner",
-                foreignField: "_id",
-                as: "owner"
-            }
-        },
-        {
-            
-            $addFields: {
-                owner: { $first: "$owner" }
-            }
-        },
-        {
-            $lookup: {
-                from: "likes",
-                localField: "_id",
-                foreignField: "tweet",
-                as: "likes"
-            }
-        },
-        {
-            $addFields: {
-                totalLikes: { $size: "$likes" },
-                isLiked: {
-                    $cond: {
-                        if: { $in: [new mongoose.Types.ObjectId(req.user?._id), "$likes.likedBy"] },
-                        then: true,
-                        else: false
+    const cachedKey=`feed:tweets:${JSON.stringify({page, limit, query, sortBy, sortType, userId})}`
+    const cachedTweets =await getOrSetCache(cachedKey,30, async () => {
+            const pipeline = [
+                {
+                    $match: match
+                },
+                {
+                    $lookup: {
+                        from: "users",
+                        localField: "owner",
+                        foreignField: "_id",
+                        as: "owner"
                     }
+                },
+                {
+                    
+                    $addFields: {
+                        owner: { $first: "$owner" }
+                    }
+                },
+                {
+                    $lookup: {
+                        from: "likes",
+                        localField: "_id",
+                        foreignField: "tweet",
+                        as: "likes"
+                    }
+                },
+                {
+                    $addFields: {
+                        totalLikes: { $size: "$likes" },
+                    }
+                },
+                {
+                    // remove the raw likes array — frontend doesn't need it
+                    $project: { likes: 0 }
+                },
+                {
+                    $sort: sortOptions
                 }
+            ]
+            const options = {
+                page: parseInt(page),
+                limit: parseInt(limit)
             }
-        },
-        {
-            // remove the raw likes array — frontend doesn't need it
-            $project: { likes: 0 }
-        },
-        {
-            $sort: sortOptions
-        }
-    ]
 
-    const options = {
-        page: parseInt(page),
-        limit: parseInt(limit)
+            return await Tweet.aggregatePaginate(Tweet.aggregate(pipeline), options)
+    })
+    // merge in the CURRENT user's isLiked status — not cached, always fresh
+    let tweetIds = cachedTweets.docs.map(v => v._id)
+    let likedSet=new Set()
+
+    if(req.user?._id && tweetIds.length){
+        const userLikes=await mongoose.model('Like').find({
+            tweet:{$in:tweetIds},
+            likedBy:req.user._id
+        }).select('tweet')
+        likedSet=new Set(userLikes.map(l => l.tweet.toString()))
     }
 
-    const tweets = await Tweet.aggregatePaginate(Tweet.aggregate(pipeline), options)
-
+    const tweetWithLikes = {
+        ...cachedTweets,
+        docs:cachedTweets.docs.map((tweet) => ({
+            ...tweet,
+            isLiked: likedSet.has(tweet._id.toString())
+        }))
+    }
     return res.status(200).json(
-        new ApiResponse(200, tweets, "Tweets fetched successfully")
+        new ApiResponse(200, tweetWithLikes, "Tweets fetched successfully")
     )
 })
 
