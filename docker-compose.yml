@@ -1,0 +1,12 @@
+services:
+  redis-newapp:
+    image: redis:7-alpine
+    container_name: redis-newapp
+    ports:
+      - "6380:6379"
+    volumes:
+      - redis_newapp_data:/data
+    restart: unless-stopped
+
+volumes:
+  redis_newapp_data:

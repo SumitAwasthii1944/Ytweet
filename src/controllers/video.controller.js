@@ -9,6 +9,7 @@ import { convertToHLS,getVideoDuration  } from "../utils/hls.js"
 import { uploadHLSToCloudinary } from "../utils/cloudinary.js" 
 import { v4 as uuidv4 } from "uuid"   
 import fs from 'fs';               
+import {invalidateCache,getOrSetCache} from '../utils/cache.js'
 
 // Reusable pipeline to fetch a single video WITH likesCount + isLiked + owner
 // Used by publishAVideo and updateVideo so they return the same shape
@@ -57,7 +58,6 @@ const getAllVideos = asyncHandler(async (req, res) => {
         match.title = { $regex: query, $options: "i" }
     }
 
-    //validate userId before converting to ObjectId
     if (userId && mongoose.Types.ObjectId.isValid(userId)) {
         match.owner = new mongoose.Types.ObjectId(userId)
     }
@@ -65,64 +65,70 @@ const getAllVideos = asyncHandler(async (req, res) => {
     match.isPublished = true
 
     const sortOptions = {}
-
     if (sortBy) {
         sortOptions[sortBy] = sortType === "asc" ? 1 : -1
     } else {
         sortOptions.createdAt = -1
     }
 
-    const pipeline = [
-        {
-            $match: match
-        },
-        {
-            $lookup: {
-                from: "likes",
-                localField: "_id",
-                foreignField: "video",
-                as: "likes"
-            }
-        },
-        {
-            $lookup: {
-                from: "users",
-                localField: "owner",
-                foreignField: "_id",
-                as: "owner"
-            }
-        },
-        {
-            $addFields: {
-                likesCount: { $size: "$likes" },
-                isLiked: {
-                    $cond: {
-                        //explicitly convert to ObjectId for correct $in comparison
-                        if: { $in: [new mongoose.Types.ObjectId(req.user?._id), "$likes.likedBy"] },
-                        then: true,
-                        else: false
-                    }
-                },
-                owner:{$first:"$owner"}
-            }
-        },
-        {
-            $project: { likes: 0 }
-        },
-        {
-            $sort: sortOptions
-        }
-    ]
+    // cache key reflects only the query shape — NOT the user, since this part is shared
+    const cacheKey = `feed:videos:${JSON.stringify({ page, limit, query, sortBy, sortType, userId })}`
 
-    const options = {
-        page: parseInt(page),
-        limit: parseInt(limit)
+    const cachedVideos = await getOrSetCache(cacheKey, 30, async () => {
+        const pipeline = [
+            { $match: match },
+            {
+                $lookup: {
+                    from: "likes",
+                    localField: "_id",
+                    foreignField: "video",
+                    as: "likes"
+                }
+            },
+            {
+                $lookup: {
+                    from: "users",
+                    localField: "owner",
+                    foreignField: "_id",
+                    as: "owner"
+                }
+            },
+            {
+                $addFields: {
+                    likesCount: { $size: "$likes" },
+                    owner: { $first: "$owner" }
+                }
+            },
+            { $project: { likes: 0 } },
+            { $sort: sortOptions }
+        ]
+
+        const options = { page: parseInt(page), limit: parseInt(limit) }
+        return await Video.aggregatePaginate(Video.aggregate(pipeline), options)
+    })
+
+    // merge in the CURRENT user's isLiked status — not cached, always fresh
+    let videoIds = cachedVideos.docs.map(v => v._id)
+    let likedSet = new Set()//A Set is just a JavaScript collection that holds unique values and offers very fast .has() lookups 
+
+    if (req.user?._id && videoIds.length) {
+        const userLikes = await mongoose.model("Like").find({
+            video: { $in: videoIds },
+            likedBy: req.user._id
+        }).select("video")
+        likedSet = new Set(userLikes.map(l => l.video.toString()))
     }
 
-    const videos = await Video.aggregatePaginate(Video.aggregate(pipeline), options)
+    const videosWithLikeStatus = {
+        ...cachedVideos,
+        docs: cachedVideos.docs.map(v => ({
+            ...v,
+            isLiked: likedSet.has(v._id.toString())
+        }))
+    }
 
     return res.status(200).json(
-        new ApiResponse(200, videos, "Videos fetched successfully")
+        new ApiResponse(200, videosWithLikeStatus, "Videos fetched successfully")
     )
 })
 
@@ -169,7 +175,6 @@ const publishAVideo = asyncHandler(async (req, res) => {
         owner: req.user._id,
         isPublished: isPublished === "true" || isPublished === true  //handle both string and boolean (FormData sends strings)
     })
-
     // fetch with likesCount + isLiked so frontend gets consistent shape
     // likesCount = 0, isLiked = false for a brand new video
     const videoWithLikes = await getVideoWithLikes(newVideo._id, req.user._id)
@@ -279,7 +284,6 @@ const updateVideo = asyncHandler(async (req, res) => {
     if (!updatedVideo) {
         throw new ApiError(404, "Video not found or unauthorized")
     }
-
     //fetch with likesCount + isLiked so frontend gets consistent shape
     // preserves existing likesCount + isLiked after edit
     const videoWithLikes = await getVideoWithLikes(videoId, req.user._id)
@@ -307,7 +311,7 @@ const deleteVideo = asyncHandler(async (req, res) => {
     if (!deletedVideo) {
         throw new ApiError(404, "Video not found or unauthorized")
     }
-
+    await invalidateCache("feed:videos:*")
     return res.status(200).json(
         new ApiResponse(200, {}, "Video deleted successfully")
     )
@@ -334,7 +338,7 @@ const togglePublishStatus = asyncHandler(async (req, res) => {
 
     video.isPublished = !video.isPublished
     await video.save()
-
+    await invalidateCache("feed:videos:*")
     return res.status(200).json(
         new ApiResponse(200, video, "Publish status toggled successfully")
     )

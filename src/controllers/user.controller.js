@@ -5,13 +5,37 @@ import {uploadOnCloudinary} from "../utils/cloudinary.js"
 import {ApiResponse} from "../utils/ApiResponse.js"
 import jwt from "jsonwebtoken"
 import mongoose from "mongoose";
-const generateAccessAndRefreshTokens = (async (userId) => {
+import redis from "../utils/redis.js";
+import { v4 as uuidv4 } from "uuid";
+
+const SESSION_TTL_SECONDS = 60 * 60 * 24 * 10;
+
+const saveSession = async (sessionId, userId, refreshToken) => {
+          // store one Redis session per login device
+          await redis.set(
+                    `session:${sessionId}`,
+                    JSON.stringify({
+                              userId: userId.toString(),
+                              refreshToken,
+                    }),
+                    'EX',
+                    SESSION_TTL_SECONDS
+          );
+};
+
+const deleteSession = async (sessionId) => {
+          // remove only the current device session
+          await redis.del(`session:${sessionId}`);
+};
+
+const generateAccessAndRefreshTokens = (async (userId, sessionId) => {
           try {
                     const user=await User.findById(userId)
-                    const accessToken=user.generateAccessToken();
-                    const refreshToken=user.generateRefreshToken();
+                    const accessToken=user.generateAccessToken(sessionId);
+                    const refreshToken=user.generateRefreshToken(sessionId);
                     user.refreshToken=refreshToken;
                     user.accessToken=accessToken;
+                    
                     await user.save({validateBeforeSave:false})//we dont need to validate password and username here because we checked it earlier
 
                     return {accessToken,refreshToken}
@@ -76,16 +100,24 @@ const googleAuth = asyncHandler(async (req, res) => {
         });
     }
 
+    const sessionId = uuidv4();
+
     // Reuse existing token generation so frontend receives the same response shape
     // as standard login. This helps keep the rest of the app unchanged.
-    const { accessToken, refreshToken } = await generateAccessAndRefreshTokens(user._id);
+    const { accessToken, refreshToken } = await generateAccessAndRefreshTokens(user._id, sessionId);
+
+    // after generating tokens
+    await saveSession(sessionId, user._id, refreshToken);
 
     const loggedInUser = await User.findById(user._id).select("-password -refreshToken");
 
     // Cookie options mirror existing login logic. Note: secure:true requires HTTPS.
+    const isProd = process.env.NODE_ENV === "production";
+
     const options = {
-        httpOnly: true,
-        secure: true
+    httpOnly: true,
+    secure: isProd,
+    sameSite: isProd ? "none" : "lax",
     };
 
     return res.status(200)
@@ -193,14 +225,19 @@ const loginUser =asyncHandler(async (req,res) => {
                     throw new ApiError(401,"wrong password")
           }
 
-          const {accessToken,refreshToken}=await generateAccessAndRefreshTokens(user._id);
+          const sessionId = uuidv4();
+          const {accessToken,refreshToken}=await generateAccessAndRefreshTokens(user._id, sessionId);
+          await saveSession(sessionId, user._id, refreshToken);
 
           const loggedInUser= await User.findById(user._id).select("-password -refreshToken")
 
-          const options ={//only modifiable by server
-                    httpOnly:true,
-                    secure:true
-          }
+          const isProd = process.env.NODE_ENV === "production";
+
+            const options = {
+            httpOnly: true,
+            secure: isProd,
+            sameSite: isProd ? "none" : "lax",
+            };
           
 
           return res.status(200)
@@ -231,6 +268,10 @@ const searchUsers = asyncHandler(async (req, res) => {
 
 const logoutUser = asyncHandler(async (req,res) => {
           //refersh token ko database se gyb kr do
+          const sessionId = req.user?.sessionId;
+          if (sessionId) {
+                    await deleteSession(sessionId);
+          }
           await User.findByIdAndUpdate(
                     req.user._id,
                     {
@@ -241,11 +282,13 @@ const logoutUser = asyncHandler(async (req,res) => {
                     { new:true }
 
           )
+            const isProd = process.env.NODE_ENV === "production";
 
-          const options={
-                    httpOnly:true,
-                    secure:true
-          }
+            const options = {
+            httpOnly: true,
+            secure: isProd,
+            sameSite: isProd ? "none" : "lax",
+            };
           return res
           .status(200)
           .clearCookie("accessToken",options)//from cookie-parser library
@@ -260,21 +303,35 @@ const refreshAccessToken= asyncHandler(async (req,res) => {
           }
           try {
                     const decodedToken=jwt.verify(incomingRefreshToken,process.env.REFRESH_TOKEN_SECRET)
+                    const sessionKey = `session:${decodedToken.sid}`;
+                    const cachedSession = await redis.get(sessionKey);
+
+                    if (!cachedSession) {
+                              throw new ApiError(401, "refresh token is expired or used");
+                    }
+
+                    const session = JSON.parse(cachedSession);
+
+                    if (session.refreshToken !== incomingRefreshToken) {
+                        throw new ApiError(401, "refresh token is expired or used");
+                    }
+
                     const user=await User.findById(decodedToken?._id)
           
                     if(!user){
                               throw new ApiError(401,"inavlid refersh token")
                     }
-                    if(incomingRefreshToken !==user?.refreshToken){
-                              throw new ApiError(401,"refresh token is expired or used")
-                    }
           
-                    const options={
-                              httpOnly:true,
-                              secure:true
-                    }
+                    const isProd = process.env.NODE_ENV === "production";
+
+                    const options = {
+                        httpOnly: true,
+                        secure: isProd,
+                        sameSite: isProd ? "none" : "lax",
+                    };
           
-                    const {accessToken,refreshToken: newRefreshToken}=await generateAccessAndRefreshTokens(user._id)
+                    const {accessToken,refreshToken: newRefreshToken}=await generateAccessAndRefreshTokens(user._id, decodedToken.sid)
+                    await saveSession(decodedToken.sid, user._id, newRefreshToken);
           
                     return res
                     .status(200)

@@ -10,7 +10,7 @@ import commentRouter from "./routes/comment.routes.js"
 import likeRouter from "./routes/like.routes.js"
 import playlistRouter from "./routes/playlist.routes.js"
 import dashboardRouter from "./routes/dashboard.routes.js"
-
+import redis from './utils/redis.js';
 const app = express()
 
 app.use(cors({
@@ -39,6 +39,16 @@ app.use("/api/v1/comments", commentRouter)
 app.use("/api/v1/likes", likeRouter)
 app.use("/api/v1/playlist", playlistRouter)
 app.use("/api/v1/dashboard", dashboardRouter)
+
+
+app.get('/redis', async (req, res) => {
+  try {
+    const reply = await redis.ping(); // "PONG"
+    res.json({ redis: reply });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
  //http://localhost:8000/api/v1/users/register
 

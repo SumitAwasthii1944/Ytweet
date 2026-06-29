@@ -41,11 +41,7 @@ const userSchema = new Schema(
         password: {
             type: String,
             required: [true, 'Password is required']
-        },
-        refreshToken: {
-            type: String
         }
-
     },
     {
         timestamps: true
@@ -53,7 +49,7 @@ const userSchema = new Schema(
 )
 
 userSchema.pre("save", async function () {// .pre() is a Mongoose middleware function that is executed before a document is saved to the database.
-//  In this case, it is used to hash the user's password before saving it to the database. 
+//  In this case, it is used to hash the password before saving it to the database. 
 // The function checks if the password field has been modified (i.e., if the user has changed their password).
 //  If it has not been modified, it simply calls next() to proceed with saving the document. If it has been modified,
 //  it hashes the new password using bcrypt and then calls next() to save the document with the hashed password.
@@ -68,10 +64,11 @@ userSchema.methods.isPasswordCorrect = async function(password){//isPasswordCorr
     return await bcrypt.compare(password, this.password)
 }
 
-userSchema.methods.generateAccessToken = function(){//access token are short lived
+userSchema.methods.generateAccessToken = function(sessionId){//access token are short lived
     return jwt.sign(
         {
             _id: this._id,
+            sid: sessionId, // Redis session id for multi-device login
             email: this.email,
             username: this.username,
             fullName: this.fullName
@@ -82,11 +79,12 @@ userSchema.methods.generateAccessToken = function(){//access token are short liv
         }
     )
 }
-userSchema.methods.generateRefreshToken = function(){//refresh token are generally long lived
+
+userSchema.methods.generateRefreshToken = function(sessionId){//refresh token are generally long lived
     return jwt.sign(
         {
             _id: this._id,
-            
+            sid: sessionId // keep refresh token tied to the same Redis session
         },
         process.env.REFRESH_TOKEN_SECRET,
         {
