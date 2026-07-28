@@ -1,5 +1,4 @@
-// utils/cache.js
-import redis from "./redis"
+import redis from "./redis.js"
 
 const getOrSetCache = async (key, ttlSeconds, fetchFn) => {
     const cached = await redis.get(key)

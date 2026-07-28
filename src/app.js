@@ -13,20 +13,23 @@ import dashboardRouter from "./routes/dashboard.routes.js"
 import redis from './utils/redis.js';
 const app = express()
 
+// app.use(cors({
+//     origin: (origin, callback) => {
+//         // allow requests from your frontend only
+//         if (!origin || origin === process.env.CORS_ORIGIN) {//allow requests with no origin (like mobile apps or curl requests) and from the specified frontend origin
+//             callback(null, true)
+//         } else {
+//             callback(new Error("Not allowed by CORS"))
+//         }
+//     },
+//     credentials: true//allow cookies to be sent in cross-origin requests
+// }))
 app.use(cors({
-    origin: (origin, callback) => {
-        // allow requests from your frontend only
-        if (!origin || origin === process.env.CORS_ORIGIN) {//allow requests with no origin (like mobile apps or curl requests) and from the specified frontend origin
-            callback(null, true)
-        } else {
-            callback(new Error("Not allowed by CORS"))
-        }
-    },
-    credentials: true//allow cookies to be sent in cross-origin requests
+    origin: process.env.CORS_ORIGIN,
+    credentials: true,
 }))
 
-app.use(express.json({limit: "16kb"}))
-app.use(express.urlencoded({extended: true, limit: "16kb"}))
+
 app.use(express.static("public"))
 app.use(cookieParser())
 

@@ -4,7 +4,7 @@ import { ApiError } from "../utils/ApiError.js"
 import { ApiResponse } from "../utils/ApiResponse.js"
 import { asyncHandler } from "../utils/asyncHandler.js"
 
-// Reusable pipeline to fetch a single comment WITH likesCount + isLiked
+// Reusable pipeline to fetch a single comment with likesCount + isLiked
 // Used by addComment and updateComment so they return the same shape
 // as getVideoComments — frontend always gets consistent data
 const getCommentWithLikes = async (commentId, userId) => {

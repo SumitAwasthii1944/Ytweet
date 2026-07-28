@@ -43,7 +43,7 @@ const getTweetWithLikes = async (tweetId, userId) => {
     return result[0] // aggregate returns array, we want the single tweet
 }
 
-// ─── Controllers ──────────────────────────────────────────────────────────────
+//Controllers
 
 const createTweet = asyncHandler(async (req, res) => {
     const { title, content } = req.body

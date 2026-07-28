@@ -115,9 +115,9 @@ const googleAuth = asyncHandler(async (req, res) => {
     const isProd = process.env.NODE_ENV === "production";
 
     const options = {
-    httpOnly: true,
-    secure: isProd,
-    sameSite: isProd ? "none" : "lax",
+        httpOnly: true,
+        secure: isProd,
+        sameSite: isProd ? "none" : "lax",
     };
 
     return res.status(200)
@@ -285,15 +285,15 @@ const logoutUser = asyncHandler(async (req,res) => {
             const isProd = process.env.NODE_ENV === "production";
 
             const options = {
-            httpOnly: true,
-            secure: isProd,
-            sameSite: isProd ? "none" : "lax",
+                httpOnly: true,
+                secure: isProd,
+                sameSite: isProd ? "none" : "lax",
             };
           return res
-          .status(200)
-          .clearCookie("accessToken",options)//from cookie-parser library
-          .clearCookie("refreshToken",options)
-          .json(new ApiResponse(200,{},"User logged out"))
+            .status(200)
+            .clearCookie("accessToken",options)//from cookie-parser library
+            .clearCookie("refreshToken",options)
+            .json(new ApiResponse(200,{},"User logged out"))
 })
 const refreshAccessToken= asyncHandler(async (req,res) => {
           const incomingRefreshToken=req.cookies.refreshToken || req.body.refreshToken
@@ -330,7 +330,8 @@ const refreshAccessToken= asyncHandler(async (req,res) => {
                         sameSite: isProd ? "none" : "lax",
                     };
           
-                    const {accessToken,refreshToken: newRefreshToken}=await generateAccessAndRefreshTokens(user._id, decodedToken.sid)
+                    const {accessToken,refreshToken: newRefreshToken}=await generateAccessAndRefreshTokens(user._id, decodedToken.sid)//refresh token is refreshed every 15 minutes with accessToken because if anyone gets the refreshToken he will have it only for 15 mins
+                    
                     await saveSession(decodedToken.sid, user._id, newRefreshToken);
           
                     return res

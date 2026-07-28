@@ -1,4 +1,4 @@
-// without -r in dev script in package.json , you'd need this at the top of every entry file
+// without -r dotenv/config in dev script in package.json , you'd need this at the top of every entry file
 // import dotenv from "dotenv"
 // dotenv.config()
 import {app} from "./app.js"
