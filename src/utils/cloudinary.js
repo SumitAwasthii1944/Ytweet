@@ -85,7 +85,16 @@ export const uploadHLSToCloudinary = async (hlsFolderPath, videoId) => {
         fs.writeFileSync(m3u8Path,content)
 
         //Step 3: Upload updated .m3u8 
-        
+        const m3u8Response = await cloudinary.uploader.upload(
+            normalizePath(m3u8Path),
+            {
+                resource_type: "raw",
+                folder: `hls/${videoId}`,
+                public_id: "index.m3u8",
+                use_filename: true,
+                unique_filename: false,
+            }
+        )
 
         console.log("HLS upload complete")
 
