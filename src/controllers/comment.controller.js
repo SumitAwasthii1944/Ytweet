@@ -1,5 +1,7 @@
 import mongoose, { isValidObjectId } from "mongoose"
 import { Comment } from "../models/comment.model.js"
+import { Video } from "../models/video.model.js"
+import { Notification } from "../models/notification.model.js"
 import { ApiError } from "../utils/ApiError.js"
 import { ApiResponse } from "../utils/ApiResponse.js"
 import { asyncHandler } from "../utils/asyncHandler.js"
@@ -33,6 +35,7 @@ const getCommentWithLikes = async (commentId, userId) => {
         {
             $addFields: {
                 likesCount: { $size: "$likes" },
+                parentComment: "$parentComment",
                 isLiked: {
                     $cond: {
                         if: { $in: [new mongoose.Types.ObjectId(userId), "$likes.likedBy"] },
@@ -82,6 +85,7 @@ const getVideoComments = asyncHandler(async (req, res) => {
         {
             $addFields: {
                 likesCount: { $size: "$likes" },
+                parentComment: "$parentComment",
                 //added isLiked — was missing, needed by commentSlice cross-slice sync
                 isLiked: {
                     $cond: {
@@ -118,7 +122,7 @@ const getVideoComments = asyncHandler(async (req, res) => {
 
 const addComment = asyncHandler(async (req, res) => {
     const { videoId } = req.params
-    const { content } = req.body
+    const { content, parentComment } = req.body
 
     if (!mongoose.Types.ObjectId.isValid(videoId)) {
         throw new ApiError(400, "Invalid videoId")
@@ -127,19 +131,67 @@ const addComment = asyncHandler(async (req, res) => {
         throw new ApiError(400, "Content is required")
     }
 
+    const video = await Video.findById(videoId).select("owner")
+    if (!video) {
+        throw new ApiError(404, "Video not found")
+    }
+    if (!video.owner) {
+        throw new ApiError(500, "Video owner is missing")
+    }
+
+    let parent = null
+    if (parentComment) {
+        if (!mongoose.Types.ObjectId.isValid(parentComment)) {
+            throw new ApiError(400, "Invalid parentComment")
+        }
+
+        parent = await Comment.findOne({
+            _id: parentComment,
+            video: videoId,
+        }).select("owner")
+
+        if (!parent) {
+            throw new ApiError(404, "Parent comment not found")
+        }
+        if (!parent.owner) {
+            throw new ApiError(500, "Parent comment owner is missing")
+        }
+    }
+
     const comment = await Comment.create({
         content,
         video: videoId,
-        owner: req.user._id
+        owner: req.user._id,
+        ...(parent ? { parentComment: parent._id } : {}),
     })
 
     if (!comment) {
         throw new ApiError(400, "Cannot comment or unauthorized")
     }
 
+    const notificationRecipient = parent?.owner || video.owner
+    const notificationType = parent ? "comment_reply" : "video_comment"
+
+    if (notificationRecipient.toString() !== req.user._id.toString()) {
+        const notification = await Notification.create({
+            recipient: notificationRecipient,
+            actor: req.user._id,
+            type: notificationType,
+            comment: comment._id,
+            video: video._id,
+        })
+
+        if (!notification) {
+            throw new ApiError(500, "Comment saved but notification could not be created")
+        }
+    }
+
     //fetch with likesCount + isLiked so frontend gets consistent shape
     // likesCount = 0, isLiked = false for a brand new comment
     const commentWithLikes = await getCommentWithLikes(comment._id, req.user._id)
+    if (commentWithLikes) {
+        commentWithLikes.parentComment = comment.parentComment || null
+    }
 
     return res.status(200).json(
         new ApiResponse(200, commentWithLikes, "Commented successfully")

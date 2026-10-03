@@ -3,6 +3,7 @@ import {Like} from "../models/likes.model.js"
 import { Video } from "../models/video.model.js"
 import { Comment } from "../models/comment.model.js"
 import {Tweet} from "../models/tweet.model.js"
+import { Notification } from "../models/notification.model.js"
 import {ApiError} from "../utils/ApiError.js"
 import {ApiResponse} from "../utils/ApiResponse.js"
 import {asyncHandler} from "../utils/asyncHandler.js"
@@ -33,6 +34,15 @@ const toggleVideoLike = asyncHandler(async (req, res) => {
           video:videoId,
           likedBy:req.user._id
     })
+
+    if (video.owner.toString() !== req.user._id.toString()) {
+          await Notification.create({
+            recipient: video.owner,
+            actor: req.user._id,
+            type: "video_like",
+            video: video._id,
+          })
+    }
 
     return res.status(200).json(
         new ApiResponse(200, {}, "Video liked")
@@ -105,6 +115,16 @@ const toggleCommentLike = asyncHandler(async (req, res) => {
                     comment: commentId,
                     likedBy: req.user._id
           })
+
+          if (comment.owner.toString() !== req.user._id.toString()) {
+            await Notification.create({
+              recipient: comment.owner,
+              actor: req.user._id,
+              type: "comment_like",
+              comment: comment._id,
+              video: comment.video,
+            })
+          }
 
       // return updated comment shape with likesCount + isLiked + owner
       const updated = await Comment.aggregate([
@@ -183,6 +203,15 @@ const toggleTweetLike = asyncHandler(async (req, res) => {
                     tweet: tweetId,
                     likedBy: req.user._id
           })
+
+          if (tweet.owner.toString() !== req.user._id.toString()) {
+            await Notification.create({
+              recipient: tweet.owner,
+              actor: req.user._id,
+              type: "tweet_like",
+              tweet: tweet._id,
+            })
+          }
 
           return res.status(200).json(
                     new ApiResponse(200, {}, "Tweet liked")

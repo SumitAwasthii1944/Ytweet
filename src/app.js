@@ -10,6 +10,7 @@ import commentRouter from "./routes/comment.routes.js"
 import likeRouter from "./routes/like.routes.js"
 import playlistRouter from "./routes/playlist.routes.js"
 import dashboardRouter from "./routes/dashboard.routes.js"
+import notificationRouter from "./routes/notification.routes.js"
 import redis from './utils/redis.js';
 import { healthcheck } from "./controllers/healthCheck.controller.js"
 const app = express()
@@ -44,6 +45,7 @@ app.use("/api/v1/comments", commentRouter)
 app.use("/api/v1/likes", likeRouter)
 app.use("/api/v1/playlist", playlistRouter)
 app.use("/api/v1/dashboard", dashboardRouter)
+app.use("/api/v1/notifications", notificationRouter)
 app.get("/api/v1/health",healthcheck)
 
 app.get('/redis', async (req, res) => {
